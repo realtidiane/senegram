@@ -4,7 +4,7 @@
 
 ### *Une messagerie temps-réel made in Sénégal*
 
-Chat, appels audio/vidéo, groupes, partage de fichiers — le tout en local, sans cloud, sans Docker.
+Chat, appels audio/vidéo, groupes, partage de fichiers .
 
 [![Node](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
