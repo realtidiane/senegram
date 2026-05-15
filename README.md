@@ -39,7 +39,7 @@ Chat, appels audio/vidéo, groupes, partage de fichiers .
 
 ## ✨ À propos
 
-**Senegram** est une application de messagerie instantanée inspirée de Telegram et WhatsApp, pensée et codée au Sénégal 🇸🇳. L'objectif : prouver qu'on peut bâtir une messagerie complète — chat texte, partage multimédia, appels audio/vidéo en WebRTC — **100 % en local**, sans dépendre d'un service cloud externe et sans conteneurisation.
+**Senegram** est une application de messagerie instantanée, pensée et codée au Sénégal 🇸🇳. L'objectif : prouver qu'on peut bâtir une messagerie complète — chat texte, partage multimédia, appels audio/vidéo en WebRTC.
 
 C'est un projet **full-stack pédagogique et fonctionnel** : tout le code est lisible, commenté en français, et tourne sur n'importe quelle machine équipée de Node.js et MySQL.
 
