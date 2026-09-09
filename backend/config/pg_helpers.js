@@ -11,14 +11,19 @@ const { Pool } = require("pg");
 /**
  * Creer un client dedie pour une transaction avec wrapper mysql2-style.
  *
- * IMPORTANT: on sauvegarde la vraie methode Client.query AVANT de l'overrider,
- * sinon on tombe en recursion infinie (ce bug a deja fait crasher le backend !)
+ * IMPORTANT: on NE doit PAS override client.query car pg.Pool utilise
+ * le tracking interne de query pour savoir si une connexion est occupee.
+ * Si on override, le release() ne marche pas correctement et le pool
+ * se bloque.
+ *
+ * Solution: retourner un objet qui imite mysql2 mais utilise le vrai
+ * client.query en interne.
  */
 async function getTransactionClient(pool) {
   const client = await pool.connect();
 
-  // Sauvegarder la vraie methode AVANT l'override
-  const originalClientQuery = client.query.bind(client);
+  // Sauvegarder la vraie methode (reference, pas override)
+  const originalQuery = client.query.bind(client);
 
   // Adapter ? -> $N (compat MySQL-style placeholders)
   function mysqlToPg(sql) {
@@ -29,7 +34,7 @@ async function getTransactionClient(pool) {
   // Wrapper qui imite mysql2 : rows/rowCount/insertId
   async function pgTxQuery(sql, params = []) {
     const pgSql = mysqlToPg(sql);
-    const result = await originalClientQuery(pgSql, params);
+    const result = await originalQuery(pgSql, params);
     return {
       rows: result.rows,
       rowCount: result.rowCount,
@@ -37,24 +42,27 @@ async function getTransactionClient(pool) {
     };
   }
 
-  // Override UNE seule fois
-  client.query = pgTxQuery;
-
-  // Transaction shortcuts
-  client.beginTransaction = async function () {
-    await originalClientQuery("BEGIN");
+  // Creer un PROXY qui delegue au client original
+  // MAIS ne pas override les methodes internes (release, etc.)
+  const wrapper = {
+    query: pgTxQuery,
+    beginTransaction: async () => {
+      await originalQuery("BEGIN");
+    },
+    commit: async () => {
+      await originalQuery("COMMIT");
+    },
+    rollback: async () => {
+      try {
+        await originalQuery("ROLLBACK");
+      } catch (_) {}
+    },
+    // Acces au client original pour usage avance
+    _client: client,
+    _rawRelease: client.release.bind(client),
   };
-  client.commit = async function () {
-    await originalClientQuery("COMMIT");
-  };
-  client.rollback = async function () {
-    await originalClientQuery("ROLLBACK");
-  };
 
-  // Conserver la vraie methode release pour usage interne
-  client._rawRelease = client.release.bind(client);
-
-  return client;
+  return wrapper;
 }
 
 /**
