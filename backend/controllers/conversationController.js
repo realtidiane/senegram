@@ -143,7 +143,7 @@ exports.openPrivate = async (req, res, next) => {
     console.log("[openPrivate] E existing=", existingResult.rows.length);
     if (existingResult.rows.length) {
       await conn._rawRelease();
-      return res.json({ conversation: await buildConversation(existingResult.rows[0].id, req.user.id) });
+      return res.json({ conversation: await buildConversation(Number(existingResult.rows[0].id), req.user.id) });
     }
 
     await conn.beginTransaction();
@@ -153,7 +153,7 @@ exports.openPrivate = async (req, res, next) => {
       [req.user.id],
     );
     console.log("[openPrivate] G insert conv=", r);
-    const convId = r.insertId;
+    const convId = Number(r.insertId);
     // Multi-VALUES pour inserer 2 membres
     await conn.query(
       `INSERT INTO conversation_members (conversation_id, user_id, role)
