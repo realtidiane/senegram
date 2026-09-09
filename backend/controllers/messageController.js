@@ -97,7 +97,7 @@ async function updateReadTimestamps(conn, conversationId) {
      SET read_at = NOW()
      WHERE m.conversation_id = $1
        AND m.read_at IS NULL
-       AND m.is_deleted = 0
+       AND m.is_deleted = FALSE
        AND NOT EXISTS (
          SELECT 1
          FROM conversation_members cm
@@ -136,7 +136,7 @@ async function markConversationRead(conversationId, userId) {
          FROM messages
          WHERE conversation_id = $2
            AND sender_id <> $3
-           AND is_deleted = 0
+           AND is_deleted = FALSE
            AND id <= $4
          ON CONFLICT (message_id, user_id) DO NOTHING`,
         [userId, conversationId, userId, last.id],
@@ -147,7 +147,7 @@ async function markConversationRead(conversationId, userId) {
          WHERE conversation_id = $1
            AND sender_id <> $2
            AND delivered_at IS NULL
-           AND is_deleted = 0
+           AND is_deleted = FALSE
            AND id <= $3`,
         [conversationId, userId, last.id],
       );
@@ -186,7 +186,7 @@ exports.list = async (req, res, next) => {
        LEFT JOIN messages rm ON rm.id = m.reply_to_id
        LEFT JOIN users ru ON ru.id = rm.sender_id
        WHERE m.conversation_id = $1
-         AND m.is_deleted = 0
+         AND m.is_deleted = FALSE
          ${before ? "AND m.id < $2" : ""}
        ORDER BY m.id DESC
        LIMIT $${before ? 3 : 2}`,
@@ -209,7 +209,7 @@ exports.search = async (req, res, next) => {
       ? req.query.filter
       : "all";
     const limit = Math.min(Number(req.query.limit) || 60, 100);
-    const where = ["m.conversation_id = $1", "m.is_deleted = 0"];
+    const where = ["m.conversation_id = $1", "m.is_deleted = FALSE"];
     const params = [convId];
     const like = `%${q}%`;
 
@@ -402,7 +402,7 @@ exports.remove = async (req, res, next) => {
       return res.status(403).json({ message: "Non autorise" });
     }
     await pool.query(
-      `UPDATE messages SET is_deleted = 1, content = NULL WHERE id = $1`,
+      `UPDATE messages SET is_deleted = TRUE, content = NULL WHERE id = $1`,
       [id],
     );
     const io = req.app.get("io");
@@ -425,7 +425,7 @@ exports.edit = async (req, res, next) => {
       return res.status(403).json({ message: "Non autorise" });
     }
     await pool.query(
-      `UPDATE messages SET content = $1, is_edited = 1 WHERE id = $2`,
+      `UPDATE messages SET content = $1, is_edited = TRUE WHERE id = $2`,
       [content, id],
     );
     const updated = await hydrateMessage(id);
@@ -468,7 +468,7 @@ exports.pin = async (req, res, next) => {
     if (!["owner", "admin"].includes(msg.role)) return res.status(403).json({ message: "Admin requis" });
 
     await pool.query(
-      `UPDATE messages SET is_pinned = 1, pinned_by = $1, pinned_at = NOW() WHERE id = $2`,
+      `UPDATE messages SET is_pinned = TRUE, pinned_by = $1, pinned_at = NOW() WHERE id = $2`,
       [req.user.id, req.params.id],
     );
     const full = await hydrateMessage(req.params.id);
@@ -492,7 +492,7 @@ exports.unpin = async (req, res, next) => {
     if (!["owner", "admin"].includes(msg.role)) return res.status(403).json({ message: "Admin requis" });
 
     await pool.query(
-      `UPDATE messages SET is_pinned = 0, pinned_by = NULL, pinned_at = NULL WHERE id = $1`,
+      `UPDATE messages SET is_pinned = FALSE, pinned_by = NULL, pinned_at = NULL WHERE id = $1`,
       [req.params.id],
     );
     req.app.get("io").to(`conv:${msg.conversation_id}`).emit("message_unpinned", {

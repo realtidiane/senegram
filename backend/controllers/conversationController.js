@@ -43,7 +43,7 @@ async function buildConversation(convId, userId) {
             u.display_name AS sender_name
      FROM messages m
      JOIN users u ON u.id = m.sender_id
-     WHERE m.conversation_id = $1 AND m.is_deleted = 0
+     WHERE m.conversation_id = $1 AND m.is_deleted = FALSE
      ORDER BY m.id DESC LIMIT 1`,
     [convId],
   );
@@ -57,7 +57,7 @@ async function buildConversation(convId, userId) {
        ON cm.conversation_id = m.conversation_id AND cm.user_id = $1::bigint
      WHERE m.conversation_id = $2::bigint
        AND m.sender_id <> $3::bigint
-       AND m.is_deleted = 0
+       AND m.is_deleted = FALSE
        AND (cm.last_read_message_id IS NULL OR m.id > cm.last_read_message_id)`,
     [userId, convId, userId],
   );

@@ -76,7 +76,7 @@ exports.listContacts = async (req, res, next) => {
       `SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.status, u.last_seen
        FROM contacts c
        JOIN users u ON u.id = c.contact_user_id
-       WHERE c.user_id = $1 AND c.is_blocked = 0
+       WHERE c.user_id = $1 AND c.is_blocked = FALSE
        ORDER BY u.display_name`,
       [req.user.id],
     );
