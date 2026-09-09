@@ -71,11 +71,14 @@ async function buildConversation(convId, userId) {
 
 exports.list = async (req, res, next) => {
   try {
+    // PostgreSQL: ne pas utiliser DISTINCT avec ORDER BY sur une colonne non-SELECT
+    // Solution: utiliser DISTINCT ON ou sous-requete
     const result = await pool.query(
-      `SELECT DISTINCT c.id
+      `SELECT c.id, c.updated_at
        FROM conversations c
        JOIN conversation_members cm ON cm.conversation_id = c.id
        WHERE cm.user_id = $1
+       GROUP BY c.id, c.updated_at
        ORDER BY c.updated_at DESC`,
       [req.user.id],
     );
