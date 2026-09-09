@@ -8,36 +8,52 @@
  */
 const { Pool } = require("pg");
 
-// Creer un client dedie pour une transaction
+/**
+ * Creer un client dedie pour une transaction avec wrapper mysql2-style.
+ *
+ * IMPORTANT: on sauvegarde la vraie methode Client.query AVANT de l'overrider,
+ * sinon on tombe en recursion infinie (ce bug a deja fait crasher le backend !)
+ */
 async function getTransactionClient(pool) {
   const client = await pool.connect();
-  // Wrapper pour adapter l'API MySQL-style a pg
-  client.query = async function pgTxQuery(sql, params = []) {
-    // Convertir ? -> $N si pas deja fait
+
+  // Sauvegarder la vraie methode AVANT l'override
+  const originalClientQuery = client.query.bind(client);
+
+  // Adapter ? -> $N (compat MySQL-style placeholders)
+  function mysqlToPg(sql) {
     let i = 0;
-    const pgSql = sql.replace(/\?/g, () => `$${++i}`);
-    const result = await client.query(pgSql, params);
+    return sql.replace(/\?/g, () => `$${++i}`);
+  }
+
+  // Wrapper qui imite mysql2 : rows/rowCount/insertId
+  async function pgTxQuery(sql, params = []) {
+    const pgSql = mysqlToPg(sql);
+    const result = await originalClientQuery(pgSql, params);
     return {
       rows: result.rows,
       rowCount: result.rowCount,
       insertId: result.rows && result.rows[0] ? result.rows[0].id : undefined,
     };
-  };
+  }
+
+  // Override UNE seule fois
+  client.query = pgTxQuery;
+
+  // Transaction shortcuts
   client.beginTransaction = async function () {
-    await client.query("BEGIN");
+    await originalClientQuery("BEGIN");
   };
   client.commit = async function () {
-    await client.query("COMMIT");
+    await originalClientQuery("COMMIT");
   };
   client.rollback = async function () {
-    await client.query("ROLLBACK");
+    await originalClientQuery("ROLLBACK");
   };
-  client.release = function () {
-    // pg.Client.release() peut etre appele avec ou sans erreur
-    return client._rawRelease ? client._rawRelease() : client.end();
-  };
-  // Conserver la vraie methode release pour usage brut si besoin
+
+  // Conserver la vraie methode release pour usage interne
   client._rawRelease = client.release.bind(client);
+
   return client;
 }
 
@@ -50,10 +66,6 @@ async function getTransactionClient(pool) {
  *
  * PostgreSQL (sans VALUES ?):
  *   INSERT INTO t (a, b) VALUES (1, 2), (3, 4)
- *   ou (recommended):
- *   INSERT INTO t (a, b) SELECT * FROM UNNEST($1::int[], $2::int[])
- *
- * Strategie : on genere les placeholders numerotes un par un pour pg.
  *
  * @param {string} sql - La requete avec UN '?' pour le bulk insert
  * @param {Array} rows - Liste de lignes [v1, v2, ...]
@@ -74,9 +86,7 @@ function bulkInsert(sql, rows) {
       return `(${phs.join(", ")})`;
     })
     .join(", ");
-  // Trouver le ? dans le SQL et le remplacer par les placeholders
   const newSql = sql.replace("?", placeholders);
-  // Flatten rows en params
   const params = rows.flat();
   return { sql: newSql, params };
 }
