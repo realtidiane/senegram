@@ -124,6 +124,7 @@ exports.openPrivate = async (req, res, next) => {
     }
 
     const targetResult = await conn.query("SELECT id FROM users WHERE id = $1", [other]);
+    console.log("[openPrivate] D target=", targetResult.rows[0]);
     if (!targetResult.rows[0]) {
       return conn._rawRelease().then(() =>
         res.status(404).json({ message: "Destinataire introuvable" })
@@ -139,16 +140,19 @@ exports.openPrivate = async (req, res, next) => {
        LIMIT 1`,
       [req.user.id, other],
     );
+    console.log("[openPrivate] E existing=", existingResult.rows.length);
     if (existingResult.rows.length) {
       await conn._rawRelease();
       return res.json({ conversation: await buildConversation(existingResult.rows[0].id, req.user.id) });
     }
 
     await conn.beginTransaction();
+    console.log("[openPrivate] F beginTx OK");
     const r = await conn.query(
       `INSERT INTO conversations (type, created_by) VALUES ('private', $1) RETURNING id`,
       [req.user.id],
     );
+    console.log("[openPrivate] G insert conv=", r);
     const convId = r.insertId;
     // Multi-VALUES pour inserer 2 membres
     await conn.query(
@@ -156,11 +160,17 @@ exports.openPrivate = async (req, res, next) => {
        VALUES ($1, $2, 'member'), ($3, $4, 'member')`,
       [convId, req.user.id, convId, other],
     );
+    console.log("[openPrivate] H member insert OK");
     await conn.commit();
 
     await conn._rawRelease();
-    res.status(201).json({ conversation: await buildConversation(convId, req.user.id) });
+    console.log("[openPrivate] I released");
+    const conv = await buildConversation(convId, req.user.id);
+    console.log("[openPrivate] J buildConversation=", conv?.id);
+    res.status(201).json({ conversation: conv });
   } catch (err) {
+    console.error("[openPrivate] ERROR:", err.message);
+    console.error("[openPrivate] STACK:", err.stack);
     try { await conn.rollback(); } catch (_) {}
     try { await conn._rawRelease(); } catch (_) {}
     next(err);
