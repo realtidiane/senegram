@@ -7,6 +7,7 @@ router.use(auth);
 router.get   ("/search",         ctrl.search);
 router.get   ("/contacts",       ctrl.listContacts);
 router.post  ("/contacts/:id",   ctrl.addContact);
+router.patch ("/contacts/:id",   ctrl.updateContact);
 router.delete("/contacts/:id",   ctrl.removeContact);
 router.patch ("/me",             ctrl.updateMe);
 router.post  ("/me/password",    ctrl.changePassword);
