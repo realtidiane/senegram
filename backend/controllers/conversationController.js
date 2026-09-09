@@ -35,6 +35,7 @@ async function buildConversation(convId, userId) {
      WHERE cm.conversation_id = $1`,
     [convId],
   );
+  console.log("[buildConversation] Q2 OK");
   const members = membersResult.rows;
 
   const lastMsgResult = await pool.query(
@@ -48,13 +49,14 @@ async function buildConversation(convId, userId) {
   );
   const lastMsg = lastMsgResult.rows[0] || null;
 
+  // PostgreSQL strict types: cast $1, $2, $3 to BIGINT explicitly
   const unreadResult = await pool.query(
     `SELECT COUNT(*) AS n
      FROM messages m
      LEFT JOIN conversation_members cm
-       ON cm.conversation_id = m.conversation_id AND cm.user_id = $1
-     WHERE m.conversation_id = $2
-       AND m.sender_id <> $3
+       ON cm.conversation_id = m.conversation_id AND cm.user_id = $1::bigint
+     WHERE m.conversation_id = $2::bigint
+       AND m.sender_id <> $3::bigint
        AND m.is_deleted = 0
        AND (cm.last_read_message_id IS NULL OR m.id > cm.last_read_message_id)`,
     [userId, convId, userId],
@@ -109,9 +111,12 @@ exports.getOne = async (req, res, next) => {
  * Ouvre (ou cree) une conversation privee 1-1 avec other_user_id.
  */
 exports.openPrivate = async (req, res, next) => {
+  console.log('[openPrivate] START');
   const conn = await getTransactionClient(pool);
+  console.log('[openPrivate] Got client');
   try {
     const other = Number(req.body.other_user_id);
+    console.log('[openPrivate] other =', other);
     if (!other || other === req.user.id) {
       return conn._rawRelease().then(() =>
         res.status(400).json({ message: "other_user_id invalide" })
