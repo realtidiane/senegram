@@ -7,7 +7,7 @@ const { getTransactionClient, bulkInsert } = require("../config/pg_helpers");
  */
 async function ensureMember(convId, userId) {
   const result = await pool.query(
-    `SELECT id, role FROM conversation_members WHERE conversation_id = $1 AND user_id = $2 LIMIT 1`,
+    `SELECT id, role FROM conversation_members WHERE conversation_id = $1::bigint AND user_id = $2::bigint LIMIT 1`,
     [convId, userId],
   );
   return result.rows[0] || null;
@@ -21,7 +21,7 @@ async function ensureMember(convId, userId) {
  */
 async function buildConversation(convId, userId) {
   const convResult = await pool.query(
-    `SELECT * FROM conversations WHERE id = $1`,
+    `SELECT * FROM conversations WHERE id = $1::bigint`,
     [convId],
   );
   const conv = convResult.rows[0];
@@ -32,7 +32,7 @@ async function buildConversation(convId, userId) {
             cm.role, cm.is_muted, cm.last_read_message_id
      FROM conversation_members cm
      JOIN users u ON u.id = cm.user_id
-     WHERE cm.conversation_id = $1`,
+     WHERE cm.conversation_id = $1::bigint`,
     [convId],
   );
   console.log("[buildConversation] Q2 OK");
@@ -43,7 +43,7 @@ async function buildConversation(convId, userId) {
             u.display_name AS sender_name
      FROM messages m
      JOIN users u ON u.id = m.sender_id
-     WHERE m.conversation_id = $1 AND m.is_deleted = FALSE
+     WHERE m.conversation_id = $1::bigint AND m.is_deleted = FALSE
      ORDER BY m.id DESC LIMIT 1`,
     [convId],
   );
@@ -134,8 +134,8 @@ exports.openPrivate = async (req, res, next) => {
     const existingResult = await conn.query(
       `SELECT c.id
        FROM conversations c
-       JOIN conversation_members cm1 ON cm1.conversation_id = c.id AND cm1.user_id = $1
-       JOIN conversation_members cm2 ON cm2.conversation_id = c.id AND cm2.user_id = $2
+       JOIN conversation_members cm1 ON cm1.conversation_id = c.id AND cm1.user_id = $1::bigint
+       JOIN conversation_members cm2 ON cm2.conversation_id = c.id AND cm2.user_id = $2::bigint
        WHERE c.type = 'private'
        LIMIT 1`,
       [req.user.id, other],
