@@ -8,6 +8,9 @@
  *   - result.insertId -> result.rows[0].id (RETURNING id)
  *   - result[0] (tableau de tableaux) -> result.rows
  *   - Connexion via env vars PG_*
+ *
+ * IMPORTANT : on sauvegarde la vraie methode Pool.query AVANT de
+ * l'overrider, sinon on tombe en recursion infinie.
  */
 const { Pool } = require("pg");
 require("dotenv").config();
@@ -21,13 +24,13 @@ const pool = new Pool({
   max: 15,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  // Force UTC pour cohérence avec TIMESTAMP DEFAULT
-  timezone: "UTC",
 });
 
+// Sauvegarder la vraie methode AVANT de l'overrider
+const originalPoolQuery = pool.query.bind(pool);
+
 // Petit ping de démarrage
-pool
-  .query("SELECT NOW() as now")
+originalPoolQuery("SELECT NOW() as now")
   .then((res) => {
     console.log(
       `✅ PostgreSQL connecté (${process.env.PGDATABASE || process.env.DB_NAME || "senegram"}) — server time: ${res.rows[0].now}`
@@ -37,19 +40,16 @@ pool
     console.error("❌ Impossible de se connecter à PostgreSQL :", err.message);
   });
 
-// Helper : adapter les `?` style MySQL en `$1, $2...` PostgreSQL
-// Evite de réécrire toutes les requêtes à la main
+// Adapter : ? -> $N (compat MySQL-style placeholders)
 function mysqlToPg(sql) {
-  // Ne touche pas aux $$ (PL/pgSQL) ni aux $1 déjà remplacés
-  // On compte les ? et on substitue séquentiellement
   let i = 0;
   return sql.replace(/\?/g, () => `$${++i}`);
 }
 
-// Helper : retourne result.rows (compat avec mysql2 style [rows])
-// Helper 2 : retourne result.rowCount
-// Helper 3 : pour INSERT ... RETURNING id, expose insertId = result.rows[0].id
-function pgResult(result) {
+// Wrapper qui imite mysql2 : rows/rowCount/insertId
+async function pgQuery(sql, params = []) {
+  const pgSql = mysqlToPg(sql);
+  const result = await originalPoolQuery(pgSql, params);
   return {
     rows: result.rows,
     rowCount: result.rowCount,
@@ -57,16 +57,10 @@ function pgResult(result) {
   };
 }
 
+// Override UNE seule fois pool.query avec notre wrapper
+pool.query = pgQuery;
+
+// On garde pool.connect() et pool.end() intacts (methodes natives de pg.Pool).
+// Le code qui appelle pool.connect() est dans pg_helpers.js via getTransactionClient.
+
 module.exports = pool;
-module.exports.query = async function pgQuery(sql, params = []) {
-  const pgSql = mysqlToPg(sql);
-  const result = await pool.query(pgSql, params);
-  return pgResult(result);
-};
-module.exports.connect = () => pool.connect();
-module.exports.end = () => pool.end();
-module.exports.sql = (strings, ...values) => {
-  // tag template literal : pg template literal helper
-  const { Pool } = require("pg");
-  return pool.query(strings.reduce((acc, str, i) => acc + str + (i < values.length ? `$${i + 1}` : ""), ""), values);
-};
