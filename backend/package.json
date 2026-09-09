@@ -1,7 +1,7 @@
 {
   "name": "senegram-backend",
   "version": "1.0.0",
-  "description": "API REST + WebSocket signaling pour Senegram (messagerie Sénégalaise temps-réel)",
+  "description": "API REST + WebSocket signaling pour Senegram (messagerie S\u00e9n\u00e9galaise temps-r\u00e9el, PostgreSQL)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -19,10 +19,10 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "mysql2": "^3.11.0",
     "selfsigned": "^2.4.1",
     "socket.io": "^4.7.5",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

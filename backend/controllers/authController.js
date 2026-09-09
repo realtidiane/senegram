@@ -36,22 +36,30 @@ exports.register = async (req, res, next) => {
       return res.status(400).json({ message: "Mot de passe trop court (min 6)" });
     }
 
-    const [rows] = await pool.query(
-      "SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1",
+    // PostgreSQL: LOWER() pour case-insensitive search (username/email stockes en lowercase)
+    const checkResult = await pool.query(
+      `SELECT id FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2) LIMIT 1`,
       [username, email],
     );
-    if (rows.length) {
-      return res.status(409).json({ message: "Username ou email déjà utilisé" });
+    if (checkResult.rows.length) {
+      return res.status(409).json({ message: "Username ou email deja utilise" });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const [result] = await pool.query(
+    // RETURNING id pour recuperer le nouvel ID
+    const insertResult = await pool.query(
       `INSERT INTO users (username, email, password_hash, display_name, phone)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
       [username.toLowerCase(), email.toLowerCase(), hash, display_name, phone || null],
     );
+    const newId = insertResult.insertId;
 
-    const [[user]] = await pool.query("SELECT * FROM users WHERE id = ?", [result.insertId]);
+    const userResult = await pool.query(
+      `SELECT * FROM users WHERE id = $1`,
+      [newId],
+    );
+    const user = userResult.rows[0];
 
     res.status(201).json({
       token: signToken(user),
@@ -67,18 +75,18 @@ exports.login = async (req, res, next) => {
       return res.status(400).json({ message: "identifier & password requis" });
     }
 
-    const [rows] = await pool.query(
-      "SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1",
-      [identifier.toLowerCase(), identifier.toLowerCase()],
+    const userResult = await pool.query(
+      `SELECT * FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2) LIMIT 1`,
+      [identifier, identifier],
     );
-    const user = rows[0];
+    const user = userResult.rows[0];
     if (!user) return res.status(401).json({ message: "Identifiants invalides" });
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ message: "Identifiants invalides" });
 
     await pool.query(
-      "UPDATE users SET status = 'online', last_seen = NOW() WHERE id = ?",
+      `UPDATE users SET status = 'online', last_seen = NOW() WHERE id = $1`,
       [user.id],
     );
 
@@ -91,7 +99,11 @@ exports.login = async (req, res, next) => {
 
 exports.me = async (req, res, next) => {
   try {
-    const [[user]] = await pool.query("SELECT * FROM users WHERE id = ?", [req.user.id]);
+    const result = await pool.query(
+      `SELECT * FROM users WHERE id = $1`,
+      [req.user.id],
+    );
+    const user = result.rows[0];
     if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
     res.json({ user: publicUser(user) });
   } catch (err) { next(err); }
@@ -100,7 +112,7 @@ exports.me = async (req, res, next) => {
 exports.logout = async (req, res, next) => {
   try {
     await pool.query(
-      "UPDATE users SET status = 'offline', last_seen = NOW() WHERE id = ?",
+      `UPDATE users SET status = 'offline', last_seen = NOW() WHERE id = $1`,
       [req.user.id],
     );
     res.json({ ok: true });

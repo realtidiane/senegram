@@ -5,8 +5,12 @@ const chatSocket = require("./chatSocket");
 const callSocket = require("./callSocket");
 
 /**
- * Attache les handlers Socket.IO après authentification JWT.
+ * Attache les handlers Socket.IO apres authentification JWT.
  * Le frontend envoie le token via `auth: { token }` dans io().
+ *
+ * Conversion MySQL -> PostgreSQL :
+ *   - pool.query(sql, [params]) : OK (wrappateur transparent)
+ *   - [rows] -> rows (pg.rows = array direct)
  */
 module.exports = function socketHandler(io) {
   // Middleware d'auth
@@ -24,24 +28,27 @@ module.exports = function socketHandler(io) {
 
   io.on("connection", async (socket) => {
     const userId = socket.user.id;
-    console.log(`🔌 [socket] ${socket.user.username} connecté (${socket.id})`);
+    console.log(`[socket] ${socket.user.username} connecte (${socket.id})`);
 
     // Room personnelle pour les notifications
     socket.join(`user:${userId}`);
 
     // Joindre automatiquement toutes les conversations dont il est membre
     try {
-      const [rows] = await pool.query(
-        `SELECT conversation_id FROM conversation_members WHERE user_id = ?`,
+      const result = await pool.query(
+        `SELECT conversation_id FROM conversation_members WHERE user_id = $1`,
         [userId],
       );
-      rows.forEach((r) => socket.join(`conv:${r.conversation_id}`));
+      result.rows.forEach((r) => socket.join(`conv:${r.conversation_id}`));
     } catch (err) {
       console.error("Erreur join rooms:", err.message);
     }
 
     // Statut = online
-    await pool.query(`UPDATE users SET status = 'online' WHERE id = ?`, [userId]);
+    await pool.query(
+      `UPDATE users SET status = 'online' WHERE id = $1`,
+      [userId],
+    );
     io.emit("presence:update", { user_id: userId, status: "online" });
 
     // Handlers
@@ -50,7 +57,7 @@ module.exports = function socketHandler(io) {
 
     socket.on("disconnect", async () => {
       await pool.query(
-        `UPDATE users SET status = 'offline', last_seen = NOW() WHERE id = ?`,
+        `UPDATE users SET status = 'offline', last_seen = NOW() WHERE id = $1`,
         [userId],
       );
       io.emit("presence:update", {
@@ -58,7 +65,7 @@ module.exports = function socketHandler(io) {
         status: "offline",
         last_seen: new Date(),
       });
-      console.log(`🔌 [socket] ${socket.user.username} déconnecté`);
+      console.log(`[socket] ${socket.user.username} deconnecte`);
     });
   });
 };
