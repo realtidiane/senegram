@@ -231,6 +231,21 @@ CREATE TRIGGER set_updated_at_push_subscriptions BEFORE UPDATE ON push_subscript
   FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
 -- =====================================================
+-- Message reactions
+-- =====================================================
+CREATE TABLE message_reactions (
+  id         BIGSERIAL PRIMARY KEY,
+  message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reaction   VARCHAR(10) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uniq_reaction UNIQUE (message_id, user_id)
+);
+
+CREATE INDEX idx_reactions_message ON message_reactions(message_id);
+CREATE INDEX idx_reactions_user ON message_reactions(user_id);
+
+-- =====================================================
 -- Donnees de demo (mot de passe = "password" bcrypt hash)
 -- =====================================================
 INSERT INTO users (username, email, password_hash, display_name, bio, avatar_url) VALUES

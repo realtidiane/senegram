@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const pool = require("../config/db");
 
 const SELECT_PUBLIC = `
-  id, username, email, display_name, avatar_url, bio, phone, status, last_seen, created_at
+  id, username, email, display_name, avatar_url, bio, phone, status, is_online, last_seen, created_at
 `;
 
 exports.search = async (req, res, next) => {
@@ -101,6 +101,25 @@ exports.addContact = async (req, res, next) => {
       [req.user.id, contactUserId],
     );
     res.json({ ok: true });
+  } catch (err) { next(err); }
+};
+
+exports.updateContact = async (req, res, next) => {
+  try {
+    const contactUserId = Number(req.params.id);
+    if (contactUserId === req.user.id) {
+      return res.status(400).json({ message: "Contact invalide" });
+    }
+    const alias = typeof req.body.alias === "string" ? req.body.alias.trim() : null;
+    // ON CONFLICT DO UPDATE = equivalent MySQL ON DUPLICATE KEY UPDATE
+    await pool.query(
+      `INSERT INTO contacts (user_id, contact_user_id, alias)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, contact_user_id) DO UPDATE
+         SET alias = EXCLUDED.alias`,
+      [req.user.id, contactUserId, alias || null],
+    );
+    res.json({ ok: true, alias: alias || null });
   } catch (err) { next(err); }
 };
 
