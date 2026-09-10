@@ -8,8 +8,12 @@ const jwt = require("jsonwebtoken");
  * On force req.user.id à être un Number pour éviter les erreurs SQL.
  */
 function auth(req, res, next) {
+  // Accepter le token depuis l'entete Authorization OU depuis le cookie httpOnly
   const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  let token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token && req.cookies && req.cookies.senegram_token) {
+    token = req.cookies.senegram_token;
+  }
 
   if (!token) {
     return res.status(401).json({ message: "Token manquant" });

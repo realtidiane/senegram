@@ -16,6 +16,8 @@ const express = require("express");
 const cors    = require("cors");
 const helmet  = require("helmet");
 const morgan  = require("morgan");
+const rateLimit = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
 const { Server: SocketServer } = require("socket.io");
 
 const authRoutes         = require("./routes/authRoutes");
@@ -51,20 +53,63 @@ const server = useHttps
   : http.createServer(app);
 
 /**
- * Stratégie CORS :
- *   - en développement on autorise *toute* origine (pratique pour accéder
- *     depuis un autre PC du LAN via http://<ip>:5173 sans config manuelle) ;
- *   - en production on restreint à CLIENT_URL (liste séparée par virgules).
+ * Stratégie CORS sécurisée :
+ *   - Production : UNIQUEMENT les origines déclarées dans CLIENT_URL
+ *   - Développement : localhost + LAN privé uniquement (PAS toutes les origines)
+ *   - Toujours valider (pas de "allow all" implicite)
  */
 const allowed = (process.env.CLIENT_URL || "")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
+// En developpement, ajouter automatiquement localhost et 127.0.0.1
+if (process.env.NODE_ENV !== "production") {
+  const devOrigins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+  ];
+  devOrigins.forEach(o => {
+    if (!allowed.includes(o)) allowed.push(o);
+  });
+}
+
 const corsOrigin = (origin, cb) => {
-  if (!origin) return cb(null, true);                       
-  if (process.env.NODE_ENV !== "production") return cb(null, true);
+  // Pas d'origine (curl, serveur) = autoriser
+  if (!origin) return cb(null, true);
+
+  // Vérifier strictement
   if (allowed.includes(origin)) return cb(null, true);
+
+  // Sinon REFUSER
   cb(new Error(`Origine non autorisée : ${origin}`));
 };
+
+// ---------- Rate Limiting ----------
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 tentatives par IP par 15min
+  message: { message: "Trop de tentatives, reessayez dans 15 minutes" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Ne pas compter les succes
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requetes par IP par minute
+  message: { message: "Trop de requetes, veuillez patienter" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const strictLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 5, // 5 creations par IP par heure (register, group create)
+  message: { message: "Limite de creation atteinte, reessayez dans 1 heure" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ---------- Socket.IO ----------
 const io = new SocketServer(server, {
@@ -81,6 +126,7 @@ app.use(helmet({
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+app.use(cookieParser());
 app.use(morgan("dev"));
 
 // Fichiers statiques (uploads)
@@ -105,13 +151,24 @@ app.get("/", (_req, res) =>
   }),
 );
 
-app.use("/api/auth",          authRoutes);
-app.use("/api/users",         userRoutes);
-app.use("/api/conversations", conversationRoutes);
-app.use("/api/messages",      messageRoutes);
-app.use("/api/groups",        groupRoutes);
+app.use("/api/auth",          authLimiter, authRoutes);
+app.use("/api/users",         generalLimiter, userRoutes);
+app.use("/api/conversations", generalLimiter, conversationRoutes);
+app.use("/api/messages",      generalLimiter, messageRoutes);
+app.use("/api/groups",        strictLimiter, groupRoutes);
 app.use("/api/upload",        uploadRoutes);
 app.use("/api/calls",         callRoutes);
+
+// ---------- Force HTTPS (only in production, behind Caddy) ----------
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    // Caddy already terminates HTTPS and passes X-Forwarded-Proto
+    if (req.headers["x-forwarded-proto"] !== "https") {
+      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    }
+    next();
+  });
+}
 
 // ---------- 404 + handler global ----------
 app.use((req, res) =>

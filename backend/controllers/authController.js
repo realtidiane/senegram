@@ -61,8 +61,10 @@ exports.register = async (req, res, next) => {
     );
     const user = userResult.rows[0];
 
+    const token = signToken(user);
+    setAuthCookie(res, token);
     res.status(201).json({
-      token: signToken(user),
+      token,
       user:  publicUser(user),
     });
   } catch (err) { next(err); }
@@ -90,8 +92,10 @@ exports.login = async (req, res, next) => {
       [user.id],
     );
 
+    const token = signToken(user);
+    setAuthCookie(res, token);
     res.json({
-      token: signToken(user),
+      token,
       user:  publicUser({ ...user, status: "online" }),
     });
   } catch (err) { next(err); }
@@ -115,6 +119,7 @@ exports.logout = async (req, res, next) => {
       `UPDATE users SET status = 'offline', last_seen = NOW() WHERE id = $1`,
       [req.user.id],
     );
+    clearAuthCookie(res);
     res.json({ ok: true });
   } catch (err) { next(err); }
 };
