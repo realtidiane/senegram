@@ -1,0 +1,53 @@
+# Configuration senegram.deadsec.tech (frontend + API + S3 storage)
+senegram.deadsec.tech {
+    # Static frontend (React build)
+    root * /var/www/senegram
+
+    # Security headers
+    header {
+        Strict-Transport-Security max-age=31536000
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' wss:; font-src 'self' data; media-src 'self' blob:; object-src 'none'; base-uri 'self'"
+    }
+
+    # ========= API =========
+    # /api/* -> backend (le backend est deja monte sur /api)
+    handle /api/* {
+        reverse_proxy 127.0.0.1:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # ========= Socket.IO =========
+    handle /socket.io/* {
+        reverse_proxy 127.0.0.1:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # ========= Storage (S3/MinIO) =========
+    # /storage/images/foo.png -> http://127.0.0.1:9000/senegram-uploads/images/foo.png
+    # handle_path strip /storage puis rewrite ajoute /senegram-uploads
+    handle_path /storage/* {
+        rewrite * /senegram-uploads{path}
+        reverse_proxy http://127.0.0.1:9000
+    }
+
+    # ========= Static frontend (React) avec SPA fallback =========
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+
+    log {
+        output file /var/log/caddy/senegram.log {
+            roll_size 10MiB
+            roll_keep 5
+        }
+        level INFO
+    }
+}
