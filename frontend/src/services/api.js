@@ -25,9 +25,9 @@ export const API_URL = resolveApiUrl();
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
-  // Important: envoyer les cookies httpOnly en cross-origin
-  // Caddy gere le proxy et autorise les cookies same-origin
-  withCredentials: true,
+  // Le JWT est envoye via Authorization: Bearer header (plus compatible que cookies)
+  // Le backend set le cookie en plus pour le SSR/SEO si besoin
+  withCredentials: false,
 });
 
 api.interceptors.request.use((config) => {
