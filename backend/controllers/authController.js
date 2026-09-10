@@ -1,6 +1,27 @@
 const bcrypt = require("bcryptjs");
 const jwt    = require("jsonwebtoken");
 const pool   = require("../config/db");
+const weakPasswords = require("../config/weak_passwords");
+
+// Helper: set JWT in httpOnly cookie (XSS-safe)
+function setAuthCookie(res, token) {
+  res.cookie("senegram_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  });
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie("senegram_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+}
 
 function signToken(user) {
   return jwt.sign(
@@ -34,6 +55,25 @@ exports.register = async (req, res, next) => {
     }
     if (password.length < 6) {
       return res.status(400).json({ message: "Mot de passe trop court (min 6)" });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ message: "Mot de passe trop long (max 128)" });
+    }
+    if (weakPasswords.has(password.toLowerCase())) {
+      return res.status(400).json({
+        message: "Mot de passe trop commun. Choisissez un mot de passe plus securise",
+      });
+    }
+    const categories = [
+      /[a-z]/.test(password),
+      /[A-Z]/.test(password),
+      /[0-9]/.test(password),
+      /[^a-zA-Z0-9]/.test(password),
+    ].filter(Boolean).length;
+    if (categories < 2 && password.length < 12) {
+      return res.status(400).json({
+        message: "Mot de passe faible. Utilisez au moins 2 categories ou 12+ caracteres",
+      });
     }
 
     // PostgreSQL: LOWER() pour case-insensitive search (username/email stockes en lowercase)
