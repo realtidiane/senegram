@@ -4,7 +4,11 @@
  * d'environnement : VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_PASSWORD.
  */
 export function buildIceServers() {
-  const ice = [{ urls: "stun:stun.l.google.com:19302" }];
+  const ice = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" }
+  ];
   const turn = import.meta.env.VITE_TURN_URL;
   if (turn) {
     ice.push({
@@ -16,10 +20,20 @@ export function buildIceServers() {
   return ice;
 }
 
-export async function getMediaStream(video) {
+export async function getMediaStream(video, facingMode = "user") {
   return await navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: video ? { width: 1280, height: 720 } : false,
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    },
+    video: video
+      ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode,
+        }
+      : false,
   });
 }
 

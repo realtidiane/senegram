@@ -1,11 +1,29 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { useSocket } from "./SocketContext";
+import { useSocket } from "./useSocket";
 import { useAuth }   from "./AuthContext";
 import { buildIceServers, getMediaStream, stopStream } from "../utils/webrtc";
+import { notifyUser } from "../utils/notifications";
 
 const CallContext = createContext(null);
 export const useCall = () => useContext(CallContext);
+
+function sessionDescription(desc) {
+  if (!desc?.type || !desc?.sdp) throw new Error("Description WebRTC invalide");
+  return new RTCSessionDescription({ type: desc.type, sdp: desc.sdp });
+}
+
+function iceCandidate(candidate) {
+  return candidate instanceof RTCIceCandidate ? candidate : new RTCIceCandidate(candidate);
+}
+
+function callErrorMessage(err, fallback) {
+  if (err?.name === "NotAllowedError") return "Autorise la caméra et le micro pour répondre";
+  if (err?.name === "NotFoundError") return "Caméra ou micro introuvable";
+  if (err?.name === "NotReadableError") return "Caméra ou micro déjà utilisé par une autre application";
+  if (err?.name === "OverconstrainedError") return "Caméra incompatible avec les contraintes demandées";
+  return fallback;
+}
 
 /**
  * Gère tout le cycle de vie d'un appel 1-1 (audio ou vidéo) :
@@ -36,22 +54,31 @@ export function CallProvider({ children }) {
   const offerRef    = useRef(null);    // SDP offer reçu en entrant
   const startedAt   = useRef(null);
   const localRef    = useRef(null);    // local stream (pour cleanup)
+  const remoteRef   = useRef(null);
+  const closingRef  = useRef(false);
+  const answeringRef = useRef(false);
+  const facingModeRef = useRef("user");
   const iceQueueRef = useRef([]);      // ICE reçus avant que la PC n'existe
 
   const cleanup = useCallback(() => {
+    closingRef.current = true;
     try { pcRef.current?.close(); } catch {}
     pcRef.current = null;
     stopStream(localRef.current);
-    stopStream(remoteStream);
+    stopStream(remoteRef.current);
     localRef.current = null;
+    remoteRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
     setCall(null);
     offerRef.current = null;
     startedAt.current = null;
-  }, [remoteStream]);
+    answeringRef.current = false;
+    iceQueueRef.current = [];
+  }, []);
 
   const createPeer = useCallback((peerUserId) => {
+    closingRef.current = false;
     const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -59,23 +86,32 @@ export function CallProvider({ children }) {
       }
     };
     pc.ontrack = (e) => {
-      setRemoteStream(e.streams[0]);
+      const stream = e.streams[0];
+      console.log('[CallContext] ontrack - stream:', stream.id, 'tracks:', stream.getTracks().map(t => `${t.kind}:${t.enabled}`));
+      stream.getAudioTracks().forEach(t => { t.enabled = true; console.log('[CallContext] Enabled audio track'); });
+      remoteRef.current = stream;
+      setRemoteStream(stream);
     };
     pc.onconnectionstatechange = () => {
-      if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
-        setCall((c) => (c ? { ...c, state: "ended" } : c));
+      if (closingRef.current) return;
+      if (pc.connectionState === "connected") {
+        setCall((c) => (c ? { ...c, state: "ongoing" } : c));
+      }
+      if (["failed", "closed"].includes(pc.connectionState)) {
+        toast.error("Appel interrompu");
+        cleanup();
       }
     };
     pcRef.current = pc;
     return pc;
-  }, [socket]);
+  }, [socket, cleanup]);
 
   async function drainIceQueue() {
     const pc = pcRef.current;
     if (!pc || !pc.remoteDescription) return;
     while (iceQueueRef.current.length) {
       const c = iceQueueRef.current.shift();
-      try { await pc.addIceCandidate(c); } catch (err) { console.error(err); }
+      try { await pc.addIceCandidate(iceCandidate(c)); } catch (err) { console.error(err); }
     }
   }
 
@@ -83,7 +119,7 @@ export function CallProvider({ children }) {
   const startCall = useCallback(async (peer, conversation_id, type = "audio") => {
     if (!socket) return;
     try {
-      const stream = await getMediaStream(type === "video");
+      const stream = await getMediaStream(type === "video", facingModeRef.current);
       localRef.current = stream;
       setLocalStream(stream);
 
@@ -110,22 +146,32 @@ export function CallProvider({ children }) {
       });
     } catch (err) {
       console.error(err);
-      toast.error("Impossible d'accéder à la caméra/micro");
+      toast.error(callErrorMessage(err, "Impossible d'accéder à la caméra/micro"));
       cleanup();
     }
   }, [socket, createPeer, cleanup]);
 
   const answerCall = useCallback(async () => {
     if (!socket || !call || call.direction !== "incoming") return;
+    if (answeringRef.current) return;
+    answeringRef.current = true;
+    setCall((c) => (c ? { ...c, state: "answering" } : c));
     try {
-      const stream = await getMediaStream(call.type === "video");
+      let stream;
+      try {
+        stream = await getMediaStream(call.type === "video", facingModeRef.current);
+      } catch (err) {
+        if (call.type !== "video" || err?.name === "NotAllowedError") throw err;
+        toast("Caméra indisponible, réponse en audio seulement");
+        stream = await getMediaStream(false);
+      }
       localRef.current = stream;
       setLocalStream(stream);
 
       const pc = createPeer(call.peer.id);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
-      await pc.setRemoteDescription(offerRef.current);
+      await pc.setRemoteDescription(sessionDescription(offerRef.current));
       await drainIceQueue();
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -139,8 +185,10 @@ export function CallProvider({ children }) {
       setCall((c) => ({ ...c, state: "ongoing" }));
     } catch (err) {
       console.error(err);
-      toast.error("Impossible d'accepter l'appel");
+      toast.error(callErrorMessage(err, "Impossible de répondre à l'appel"));
       cleanup();
+    } finally {
+      answeringRef.current = false;
     }
   }, [socket, call, createPeer, cleanup]);
 
@@ -165,6 +213,35 @@ export function CallProvider({ children }) {
     cleanup();
   }, [socket, call, cleanup]);
 
+  const switchCamera = useCallback(async () => {
+    const pc = pcRef.current;
+    const currentStream = localRef.current;
+    if (!pc || !currentStream) return;
+    const currentTrack = currentStream.getVideoTracks()[0];
+    if (!currentTrack) return;
+
+    const nextFacingMode = facingModeRef.current === "user" ? "environment" : "user";
+    try {
+      const nextStream = await getMediaStream(true, nextFacingMode);
+      const nextTrack = nextStream.getVideoTracks()[0];
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (!nextTrack || !sender) {
+        stopStream(nextStream);
+        return;
+      }
+      await sender.replaceTrack(nextTrack);
+      currentTrack.stop();
+      currentStream.getVideoTracks().forEach((track) => currentStream.removeTrack(track));
+      currentStream.addTrack(nextTrack);
+      nextStream.getAudioTracks().forEach((track) => track.stop());
+      facingModeRef.current = nextFacingMode;
+      setLocalStream(new MediaStream(currentStream.getTracks()));
+    } catch (err) {
+      console.error(err);
+      toast.error("Impossible de changer de caméra");
+    }
+  }, []);
+
   // -------- Réception des events socket --------
   useEffect(() => {
     if (!socket) return;
@@ -181,6 +258,11 @@ export function CallProvider({ children }) {
         conversation_id,
       });
       toast(`📞 Appel ${type === "video" ? "vidéo" : "audio"} de ${from.display_name || from.username}`);
+      notifyUser({
+        title: `Appel ${type === "video" ? "vidéo" : "audio"} entrant`,
+        body: from.display_name || from.username || "Senegram",
+        conversationId: conversation_id,
+      });
     };
 
     const onCreated = ({ call_id }) => {
@@ -189,7 +271,7 @@ export function CallProvider({ children }) {
 
     const onAccepted = async ({ sdp_answer }) => {
       try {
-        await pcRef.current?.setRemoteDescription(sdp_answer);
+        await pcRef.current?.setRemoteDescription(sessionDescription(sdp_answer));
         await drainIceQueue();
         startedAt.current = Date.now();
         setCall((c) => (c ? { ...c, state: "ongoing" } : c));
@@ -203,10 +285,15 @@ export function CallProvider({ children }) {
       cleanup();
     };
 
+    const onUnavailable = ({ message }) => {
+      toast.error(message || "Utilisateur indisponible");
+      cleanup();
+    };
+
     const onIce = async ({ candidate }) => {
       if (!candidate) return;
       if (pcRef.current && pcRef.current.remoteDescription) {
-        try { await pcRef.current.addIceCandidate(candidate); } catch (err) { console.error(err); }
+        try { await pcRef.current.addIceCandidate(iceCandidate(candidate)); } catch (err) { console.error(err); }
       } else {
         iceQueueRef.current.push(candidate);
       }
@@ -220,6 +307,7 @@ export function CallProvider({ children }) {
     socket.on("call:created",  onCreated);
     socket.on("call:accepted", onAccepted);
     socket.on("call:rejected", onRejected);
+    socket.on("call:unavailable", onUnavailable);
     socket.on("call:ice",      onIce);
     socket.on("call:ended",    onEnded);
 
@@ -228,6 +316,7 @@ export function CallProvider({ children }) {
       socket.off("call:created",  onCreated);
       socket.off("call:accepted", onAccepted);
       socket.off("call:rejected", onRejected);
+      socket.off("call:unavailable", onUnavailable);
       socket.off("call:ice",      onIce);
       socket.off("call:ended",    onEnded);
     };
@@ -238,7 +327,7 @@ export function CallProvider({ children }) {
 
   const value = {
     call, localStream, remoteStream,
-    startCall, answerCall, rejectCall, endCall,
+    startCall, answerCall, rejectCall, endCall, switchCamera,
   };
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 }

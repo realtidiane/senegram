@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
-import { X, Camera, LogOut } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, X, Camera, LogOut } from "lucide-react";
 import toast from "react-hot-toast";
 import Avatar from "./Avatar";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import PushTest from "./PushTest";
 
 export default function ProfileModal({ onClose }) {
   const { user, updateProfile, logout } = useAuth();
@@ -12,6 +13,14 @@ export default function ProfileModal({ onClose }) {
   const [phone, setPhone]     = useState(user.phone || "");
   const [busy, setBusy]       = useState(false);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   async function save() {
     setBusy(true);
@@ -42,42 +51,53 @@ export default function ProfileModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="card w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-ink-100">
-          <h3 className="font-semibold text-ink-900">Mon profil</h3>
-          <button onClick={onClose} className="btn-ghost p-1"><X className="w-5 h-5" /></button>
+    <div
+      className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-3 sm:p-4"
+      onMouseDown={onClose}
+    >
+      <div
+        className="card w-full max-w-md max-h-[calc(100vh-24px)] overflow-hidden flex flex-col"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-ink-100 bg-white">
+          <button onClick={onClose} className="btn-ghost p-2 md:hidden" aria-label="Retour">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h3 className="font-semibold text-ink-900 flex-1 md:flex-none">Mon profil</h3>
+          <button onClick={onClose} className="btn-ghost p-2" aria-label="Fermer"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="p-6 flex flex-col items-center">
-          <div className="relative">
-            <Avatar user={user} size={96} />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 p-2 rounded-full bg-brand-600 text-white shadow-soft"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-            <input type="file" hidden ref={fileRef} accept="image/*"
-                   onChange={(e) => uploadAvatar(e.target.files?.[0])} />
+        <div className="overflow-y-auto">
+          <div className="p-6 flex flex-col items-center">
+            <div className="relative">
+              <Avatar user={user} size={96} />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="absolute -bottom-1 -right-1 p-2 rounded-full bg-brand-600 text-white shadow-soft"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+              <input type="file" hidden ref={fileRef} accept="image/*"
+                     onChange={(e) => uploadAvatar(e.target.files?.[0])} />
+            </div>
+            <div className="mt-4 font-semibold text-ink-900">@{user.username}</div>
+            <div className="text-xs text-ink-500">{user.email}</div>
           </div>
-          <div className="mt-4 font-semibold text-ink-900">@{user.username}</div>
-          <div className="text-xs text-ink-500">{user.email}</div>
+
+          <div className="px-6 pb-6 space-y-3">
+            <label className="block text-sm text-ink-700">Nom affiché
+              <input className="input mt-1" value={display} onChange={(e) => setDisplay(e.target.value)} />
+            </label>
+            <label className="block text-sm text-ink-700">Bio
+              <input className="input mt-1" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={255} />
+            </label>
+            <label className="block text-sm text-ink-700">Téléphone
+              <input className="input mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </label>
+          </div>
         </div>
 
-        <div className="px-6 pb-6 space-y-3">
-          <label className="block text-sm text-ink-700">Nom affiché
-            <input className="input mt-1" value={display} onChange={(e) => setDisplay(e.target.value)} />
-          </label>
-          <label className="block text-sm text-ink-700">Bio
-            <input className="input mt-1" value={bio} onChange={(e) => setBio(e.target.value)} maxLength={255} />
-          </label>
-          <label className="block text-sm text-ink-700">Téléphone
-            <input className="input mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </label>
-        </div>
-
-        <div className="flex gap-2 p-4 border-t border-ink-100">
+        <div className="sticky bottom-0 flex gap-2 p-4 border-t border-ink-100 bg-white">
           <button onClick={logout} className="btn-ghost text-senegal-red flex items-center gap-2">
             <LogOut className="w-4 h-4" /> Déconnexion
           </button>

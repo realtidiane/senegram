@@ -35,9 +35,10 @@ export default function Register() {
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-ink-50">
       <div className="hidden md:flex flex-col justify-center p-12
-                      bg-gradient-to-br from-senegal-green via-brand-600 to-brand-700 text-white relative">
-        <div className="absolute top-10 right-10 w-52 h-52 bg-senegal-yellow/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-10 left-10 w-64 h-64 bg-senegal-red/20 rounded-full blur-3xl" />
+                      bg-[linear-gradient(135deg,#00853F,#047857_55%,#064e3b)] text-white relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20"
+             style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.22) 1px, transparent 1px)", backgroundSize: "34px 34px" }} />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-ink-950/25 to-transparent" />
 
         <div className="relative z-10">
           <div className="flex items-center gap-3 font-display text-3xl font-extrabold mb-8">
@@ -47,17 +48,17 @@ export default function Register() {
             Senegram
           </div>
           <h2 className="font-display text-4xl font-bold leading-tight">
-            Rejoins la plus grande communauté sénégalaise en ligne.
+            Crée ton espace de discussion en quelques secondes.
           </h2>
           <p className="mt-4 text-white/80 max-w-md">
-            Crée ton compte en quelques secondes et commence à discuter, partager et
-            appeler gratuitement.
+            Configure ton profil, retrouve tes contacts et commence à échanger
+            dans une interface pensée pour les conversations rapides.
           </p>
         </div>
       </div>
 
-      <div className="flex items-center justify-center p-8">
-        <div className="w-full max-w-md card p-8">
+      <div className="flex items-center justify-center p-5 sm:p-8">
+        <div className="w-full max-w-md card p-6 sm:p-8">
           <h1 className="font-display text-3xl font-bold text-ink-900">Inscription</h1>
           <p className="text-ink-500 mt-1">C'est rapide et gratuit.</p>
 

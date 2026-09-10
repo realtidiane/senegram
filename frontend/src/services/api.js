@@ -1,34 +1,47 @@
 import axios from "axios";
 
 /**
- * Détermine l'URL du backend.
+ * Determine le baseURL pour les appels API.
  *
- *  - Si VITE_API_URL est défini (prod ou config explicite), on l'utilise.
- *  - Sinon on prend dynamiquement l'hôte courant du navigateur, ce qui
- *    permet d'accéder à l'app depuis n'importe quelle machine du LAN
- *    (http://192.168.x.y:5173 → API http://192.168.x.y:5000) sans rebuild.
+ * Par defaut, on utilise une URL relative "" qui passe par Caddy (reverse proxy).
+ * Caddy redirige /api/* vers le backend Node.js sur le port interne 5000.
+ *
+ * Avantages:
+ * - Pas de probleme CSP (meme origine)
+ * - Pas de probleme CORS (cookies same-origin)
+ * - Fonctionne en dev (Vite proxy) et prod (Caddy)
+ *
+ * Override possible via VITE_API_URL pour pointer vers un backend distant.
  */
 function resolveApiUrl() {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (typeof window !== "undefined" && window.location) {
-    const proto = window.location.protocol;     // "http:" | "https:"
-    const host  = window.location.hostname;     // "localhost" | "192.168.1.42" | …
-    const port  = import.meta.env.VITE_API_PORT || "5000";
-    // Note : si la page est chargée en https://, le backend DOIT aussi
-    // ecouter en https:// (même port, même cert auto-signé).
-    return `${proto}//${host}:${port}`;
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/+$/, "").replace(/\/api(?:\/api)*$/, "");
   }
-  return "http://localhost:5000";
+  // Toujours URL relative -> passe par Caddy ou Vite proxy
+  return "";
 }
 
 export const API_URL = resolveApiUrl();
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
-  withCredentials: false,
+  // Important: envoyer les cookies httpOnly en cross-origin
+  // Caddy gere le proxy et autorise les cookies same-origin
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
+  if (config.baseURL) {
+    config.baseURL = config.baseURL
+      .replace(/\/+$/, "")
+      .replace(/\/api\/api$/, "/api");
+  }
+  if (typeof config.url === "string") {
+    config.url = config.url.replace(/^\/api\/api\//, "/").replace(/^\/api\//, "/");
+  }
+  // JWT envoye via cookie httpOnly automatiquement (withCredentials=true)
+  // Plus besoin du localStorage, le cookie est envoye avec chaque requete
+  // On garde un fallback pour le mode dev ou les clients non-browser
   const token = localStorage.getItem("senegram_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -50,7 +63,9 @@ api.interceptors.response.use(
 export function fileUrl(url) {
   if (!url) return "";
   if (url.startsWith("http")) return url;
-  return `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  // URL relative -> passe par Caddy
+  if (url.startsWith("/")) return url;
+  return `/${url}`;
 }
 
 export default api;

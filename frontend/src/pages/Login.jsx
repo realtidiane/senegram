@@ -26,12 +26,13 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
+    <div className="min-h-screen grid md:grid-cols-2 bg-ink-50">
       {/* Visuel gauche */}
       <div className="hidden md:flex flex-col justify-between p-10 relative overflow-hidden
-                      bg-gradient-to-br from-brand-700 via-brand-600 to-senegal-green">
-        <div className="absolute -top-20 -right-20 w-80 h-80 bg-senegal-yellow/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -left-20 w-96 h-96 bg-senegal-red/20 rounded-full blur-3xl" />
+                      bg-[linear-gradient(135deg,#064e3b,#047857_55%,#00853F)]">
+        <div className="absolute inset-0 opacity-20"
+             style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.22) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.22) 1px, transparent 1px)", backgroundSize: "34px 34px" }} />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-ink-950/25 to-transparent" />
 
         <div className="relative z-10 text-white">
           <div className="flex items-center gap-3 font-display text-3xl font-extrabold">
@@ -40,7 +41,7 @@ export default function Login() {
             </div>
             Senegram
           </div>
-          <p className="mt-3 text-white/80">La messagerie 100% sénégalaise 🇸🇳</p>
+          <p className="mt-3 text-white/80">Messagerie instantanée, appels et groupes.</p>
         </div>
 
         <div className="relative z-10 text-white max-w-md">
@@ -48,8 +49,8 @@ export default function Login() {
             Reste connecté avec ta famille, tes amis, ton équipe.
           </h2>
           <p className="mt-4 text-white/80">
-            Chat instantané, appels audio &amp; vidéo HD, groupes, partage de photos et
-            de documents — tout au même endroit, en sécurité.
+            Chat instantané, appels audio et vidéo, groupes, partage de photos et
+            de documents dans un espace rapide et clair.
           </p>
           <div className="mt-8 flex items-center gap-6 text-white/70 text-sm">
             <div>Chiffrement en transit</div>
@@ -59,18 +60,18 @@ export default function Login() {
         </div>
 
         <div className="relative z-10 text-white/50 text-xs">
-          Made with ❤️ in by @realtidiane - 2026
+          Senegram · 2026
         </div>
       </div>
 
       {/* Formulaire */}
-      <div className="flex items-center justify-center p-8 bg-ink-50">
-        <div className="w-full max-w-md card p-8">
+      <div className="flex items-center justify-center p-5 sm:p-8">
+        <div className="w-full max-w-md card p-6 sm:p-8">
           <div className="md:hidden flex items-center gap-3 font-display text-2xl font-extrabold text-brand-700 mb-6">
             <MessageCircle className="w-7 h-7" /> Senegram
           </div>
 
-          <h1 className="font-display text-3xl font-bold text-ink-900">Bon retour </h1>
+          <h1 className="font-display text-3xl font-bold text-ink-900">Bon retour</h1>
           <p className="text-ink-500 mt-1">Connecte-toi pour continuer tes discussions.</p>
 
           <form onSubmit={onSubmit} className="mt-8 space-y-4">
